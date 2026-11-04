@@ -40,7 +40,9 @@
 (function(){
   var DAYPARTS = ["Early AM","Late AM","Lunch","Afternoon","Evening","Late"];
 
-  var client = (window.SigmaPlugin && window.SigmaPlugin.client) || null;
+  var client = (window.sigmaComputing && window.sigmaComputing.plugin && window.sigmaComputing.plugin.client) ||
+               (window.SigmaPlugin && window.SigmaPlugin.client) || null;
+  var painted = false;
   var defs = [
     {name:'source', type:'element'},
     {name:'retailer', type:'column', source:'source', label:'Retailer'},
@@ -108,6 +110,7 @@
   }
 
   function render(data){
+    painted = true;
     var networks = [];
     data.forEach(function(d){ if (networks.indexOf(d.network)===-1) networks.push(d.network); });
     var byKey = {};
@@ -182,11 +185,13 @@
     });
   }
 
+  // Ordering is load-bearing (same finding as osrs-ge-offer-grid): register
+  // the config handler FIRST, before painting, then fall back to sample data
+  // only if nothing has painted shortly after.
   if (client){
-    client.config.subscribe(function(cfg){ bind(cfg); });
-  } else {
-    render(synth());
+    try { client.config.subscribe(function(cfg){ bind(cfg); }); } catch (e) {}
   }
+  setTimeout(function(){ if (!painted) render(synth()); }, 900);
 
   // ResizeObserver on the stage element, not a window resize listener, and no
   // animation loop -- headless PNG export must be able to reach idle.

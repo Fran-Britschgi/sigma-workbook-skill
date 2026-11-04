@@ -1794,6 +1794,20 @@ if _DROP_PAGES:
           % (",".join(sorted(_SURF)), ",".join(sorted(_DROP_PAGES)),
              _before, len(elements), len(agents)))
 
+# Per-company extension pages (Instacart: Finance + Fraud, from the use-case
+# brief). Declared in extra_<key>.py; extend() returns (layout, pages, nav).
+EXTRA_PAGES = []
+if CFG["key"] == "instacart" and os.environ.get("EXTRAS", "1") != "0":
+    import extra_instacart as _X
+    LAYOUT, EXTRA_PAGES, _NAV = _X.extend(dict(
+        add=add, B=B, S=S, CO=CO, CFG=CFG, LAYOUT=LAYOUT, header=header,
+        nav_el=nav_el, panel=panel, title=title, agents=agents,
+        MONEY_M=MONEY_M, NUM0=NUM0, list_control=list_control))
+    for _el in elements:
+        if _el.get("kind") == "navigation":
+            _el["options"] = _el["options"] + [
+                o for o in _NAV if o not in _el["options"]]
+
 # API drift (found 2026-11-03): alignment enums moved from start|middle|end to
 # left|center|right (horizontal) and top|center|bottom (vertical). The
 # builders below still emit the old words. Normalise once, at the boundary.
@@ -1836,6 +1850,7 @@ DOCUMENT = {
         {"id": "pg1", "name": "Command Center"},
         {"id": "pg2", "name": CO.lab(CFG, "modeler_page")},
         {"id": "pg3", "name": CO.lab(CFG, "cohort_page")},
+        *EXTRA_PAGES,
         {"id": "pgData", "name": "Data", "visibility": "hidden"},
     ) if pg["id"] not in _DROP_PAGES],
     "overlays": overlays,

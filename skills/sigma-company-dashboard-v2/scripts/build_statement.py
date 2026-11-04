@@ -366,6 +366,33 @@ PAGES = [{"id": "p1", "name": ST_("page_name")},
          {"id": "p2", "name": "Account Activity"},
          {"id": "pdata", "name": "Data", "visibility": "hidden"}]
 
+# API drift (2026-11-03): alignment enums renamed; chart value/color shelves
+# take {"columnId"} not {"id"}; mirror the normaliser in build_sofi.py.
+_H = {"start": "left", "middle": "center", "end": "right"}
+_V = {"start": "top", "middle": "center", "end": "bottom"}
+
+
+def _norm(o, parent=None):
+    if isinstance(o, dict):
+        for k, v in list(o.items()):
+            if k in ("anchor", "alignment", "horizontalAlign") and v in _H:
+                o[k] = _H[v]
+            elif k in ("verticalAnchor", "verticalAlign") and v in _V:
+                o[k] = _V[v]
+            elif k in ("value", "color") and isinstance(v, dict) \
+                    and "id" in v and "columnId" not in v:
+                v["columnId"] = v.pop("id")
+            else:
+                _norm(v)
+    elif isinstance(o, list):
+        for v in o:
+            _norm(v)
+
+
+_norm(elements)
+for _el in elements:
+    _el.pop("visibleAsSource", None)
+
 DOCUMENT = {
     "schemaVersion": 1,
     "kind": "report",

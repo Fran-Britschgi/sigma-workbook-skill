@@ -95,6 +95,8 @@ def sql_text(filename):
         return CO.branch_performance_sql(CFG)
     if filename == "daypart_ratings.sql":
         return CO.daypart_ratings_sql(CFG)
+    if filename == "fulfillment_heatmap.sql":
+        return CO.fulfillment_heatmap_sql(CFG)
     raw = (SQL / filename).read_text()
     if filename == "member_population.sql":
         return CO.population_sql(CFG, raw)
@@ -593,7 +595,7 @@ add({"id": "map-geo", "kind": "region-map",
           "format": MONEY_M},
          {"id": "gm-perf", "formula": "Avg([%s/Performance Index])" % LB,
           "name": "Performance vs plan", "format": PCT1}],
-     "region": {"id": "gm-st", "regionType": "us-state"},
+     "region": {"columnId": "gm-st", "regionType": "us-state"},
      # shaded by performance against plan, not raw volume: a big state is not
      # news, a big state that is UNDERPERFORMING is
      # continuous scale centred on 1.0 = exactly on plan, so under-plan states
@@ -1273,7 +1275,7 @@ add({"id": "btn-modal-cancel", "kind": "button", "text": "Cancel", "appearance":
 
 overlays.append({
     "id": "drawerProduct", "type": "drawer", "name": "Product Detail",
-    "drawer": {"width": "medium", "position": "end", "showShadow": "shown",
+    "drawer": {"width": "medium", "showShadow": "shown",
                "header": {"title": " ", "showCloseIcon": "shown"}}})
 add({"id": "dw-tbl", "kind": "table", "name": "Product Detail",
      "source": {"elementId": "tbl-lb", "kind": "table"},
@@ -1791,6 +1793,40 @@ if _DROP_PAGES:
     print("surfaces=%s  dropped=%s  elements %d -> %d  agents=%d"
           % (",".join(sorted(_SURF)), ",".join(sorted(_DROP_PAGES)),
              _before, len(elements), len(agents)))
+
+# API drift (found 2026-11-03): alignment enums moved from start|middle|end to
+# left|center|right (horizontal) and top|center|bottom (vertical). The
+# builders below still emit the old words. Normalise once, at the boundary.
+_H = {"start": "left", "middle": "center", "end": "right"}
+_V = {"start": "top", "middle": "center", "end": "bottom"}
+
+
+def _norm_align(o):
+    if isinstance(o, dict):
+        for k, v in list(o.items()):
+            if k in ("anchor", "alignment") and v in _H:
+                o[k] = _H[v]
+            elif k in ("verticalAnchor", "verticalAlign") and v in _V:
+                o[k] = _V[v]
+            else:
+                _norm_align(v)
+    elif isinstance(o, list):
+        for v in o:
+            _norm_align(v)
+
+
+_norm_align(elements)
+
+# visibleAsSource is data-model-only now; rejected on workbook elements
+for _el in elements:
+    _el.pop("visibleAsSource", None)
+
+# pivot shelves now reference columns as {"columnId": ...}, not {"id": ...}
+for _el in elements:
+    for _shelf in ("rowsBy", "columnsBy"):
+        for _it in _el.get(_shelf) or []:
+            if isinstance(_it, dict) and "id" in _it and "columnId" not in _it:
+                _it["columnId"] = _it.pop("id")
 
 DOCUMENT = {
     "schemaVersion": 1,

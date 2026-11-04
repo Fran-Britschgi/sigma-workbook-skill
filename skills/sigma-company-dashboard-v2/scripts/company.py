@@ -1964,6 +1964,14 @@ def statement_activity_sql(cfg):
                  "'%s'" % c, "%.2f" % amt, str(pts))
                 for t, pd, d, c, amt, pts in _FM_ACTIVITY]
         return _union(rows, cols)
+    if cfg["key"] == "instacart":
+        cols = ["Transaction Date", "Post Date",
+                "Merchant Name or Transaction Description", "Category", "Amount",
+                "Points Earned"]
+        rows = [("'%s/2026'" % t, "'%s/2026'" % pd, "'%s'" % d.replace("'", "''"),
+                 "'%s'" % c, "%.2f" % amt, str(pts))
+                for t, pd, d, c, amt, pts in _IC_ACTIVITY]
+        return _union(rows, cols)
     if cfg["key"] != "delta":
         return None
     cols = ["Transaction Date", "Post Date",
@@ -1991,6 +1999,9 @@ def rewards_summary_sql(cfg):
     if cfg["key"] == "foxmedia":
         rows = [(str(o), "'%s'" % d, str(p)) for o, d, p in _FM_ADUNITS]
         return _union(rows, ["Line Order", "Description", "Points"])
+    if cfg["key"] == "instacart":
+        rows = [(str(o), "'%s'" % d, str(p)) for o, d, p in _IC_ORDERS]
+        return _union(rows, ["Line Order", "Description", "Points"])
     if cfg["key"] != "delta":
         return None
     rows = [(str(o), "'%s'" % d, str(p)) for o, d, p in _DL_MILES]
@@ -2012,6 +2023,9 @@ def account_summary_sql(cfg):
         return _union(rows, ["Line Order", "Metric", "Value"])
     if cfg["key"] == "foxmedia":
         rows = [(str(o), "'%s'" % m, "'%s'" % v) for o, m, v in _FM_SUMMARY]
+        return _union(rows, ["Line Order", "Metric", "Value"])
+    if cfg["key"] == "instacart":
+        rows = [(str(o), "'%s'" % m, "'%s'" % v) for o, m, v in _IC_SUMMARY]
         return _union(rows, ["Line Order", "Metric", "Value"])
     if cfg["key"] != "delta":
         return None
@@ -3925,5 +3939,330 @@ _FM_SUMMARY = [
     (5, "Retransmission Consent Rate — Television", "$3.10 / sub / month"),
     (6, "Ad Avail Utilization (Sellout Rate)", "94.2%"),
     (7, "Agreement Renewal Date", "12/31/2026"),
+    (8, "Account Standing", "Current"),
+]
+
+
+# ---------------------------------------------------------------------------
+# Instacart (Maplebear Inc., NASDAQ: CART) -- grocery technology marketplace.
+# Instacart does not hold inventory; it earns a take rate on gross transaction
+# value (GTV) flowing through retailer partners, plus advertising from CPG
+# brands. Reports two segments: Transaction, and Advertising & Other.
+#
+#   product -> business line (delivery by Instacart+ membership, pickup,
+#              enterprise platform, ads, health & other)
+#   volume  -> annualised GTV, $MM (ads: annualised brand ad spend, $MM)
+#   yield   -> take rate: revenue / GTV (ads: net-of-agency revenue / spend)
+#   cost    -> cost of revenue rate (payments, insurance, promotions, ad
+#              serving). Spread therefore = GROSS PROFIT, labelled as such --
+#              the Delta/NVIDIA "Net Revenue is a spread" trap, mapped up front
+#   fee     -> small ancillary fee income (MONTHLY, $MM)
+#   risk    -> order-defect / refund rate
+#   units   -> monthly orderers (thousands)
+#   shock   -> consumer basket / promotion-intensity shock (bps)
+#
+# Calibration (repro of loan_book.sql, current 12 months ending 2026-07):
+# ~$37.8B GTV, ~$3.0B gross profit (~77% of ~$3.9B revenue), ~$1.0B
+# contribution ~ adj. EBITDA, ~13% growth. Public figures: FY2024 revenue
+# $3.38B, GTV $33.5B; roughly 80% of revenue is Transaction. Illustrative
+# demo data, not reported results.
+# ---------------------------------------------------------------------------
+INSTACART = {
+    "key": "instacart",
+    "name": "Instacart",
+    "title": "Marketplace & Advertising Performance Command Center",
+    "domain": "grocery technology marketplace",
+    "unit_noun": "orderer",
+    "volume_noun": "gross transaction value",
+    "logo_domain": "instacart.com",
+    # Instacart's carrot mark is green + orange; recolouring white is fine on
+    # the kale gradient header (default treatment, no chip).
+    "base_table": "Marketplace Ledger",
+    # sampled from the logo SVG itself: kale #003D29, leaf green #0AAD0A,
+    # carrot #FF7009 (not guessed)
+    "palette": {
+        "navy": "#003D29", "navy_deep": "#002116",
+        "primary": "#0AAD0A", "secondary": "#2F7D5B",
+        "accent": "#FF7009", "mint": "#5BC8A0",
+    },
+    "products": [
+        # name, order, balance_type, bal_base, yield, funding, fee_base,
+        # provision, delinq, opex_ratio, growth, units_base, phase, tagline,
+        # rate_label, goal_pct, status
+        ("Delivery — Instacart+ members", 1, "Transaction", 15800, .0680, .0150,
+         3.0, .0006, .012, .680, .09, 6200, 0.0,
+         "Free-delivery members, highest frequency and basket",
+         "Take rate", 1.034, "Ahead"),
+        ("Delivery — non-members", 2, "Transaction", 10900, .0820, .0230,
+         2.0, .0010, .018, .680, .05, 6800, 1.1,
+         "Pay-per-order delivery, higher fees, lower frequency",
+         "Take rate", .971, "On plan"),
+        ("Pickup", 3, "Transaction", 3500, .0450, .0110,
+         0.5, .0008, .020, .680, .03, 2100, 2.2,
+         "Curbside and in-store pickup from retail partners",
+         "Take rate", .942, "Behind"),
+        ("Enterprise Platform", 4, "Advertising & Other", 1950, .0520, .0210,
+         6.0, .0012, .015, .760, .22, 900, 0.6,
+         "Storefront Pro, Caper Carts, FoodStorm for retailers",
+         "Take rate", 1.083, "Ahead"),
+        ("Carrot Ads", 5, "Advertising & Other", 780, .9700, .1400,
+         0.0, .0020, .010, .520, .12, 1400, 1.7,
+         "Sponsored products, shoppable video and display for CPG brands",
+         "Net revenue / spend", 1.047, "Ahead"),
+        ("Instacart Health & Other", 6, "Advertising & Other", 510, .0580, .0200,
+         1.0, .0010, .022, .760, .30, 650, 2.8,
+         "FSA/HSA-eligible baskets, Instacart Business, gift cards",
+         "Take rate", 1.121, "Ahead"),
+    ],
+    "alerts": [
+        ("critical", "Pickup order volume below plan",
+         "Pickup orders running 5.8% below plan at two top-10 retailer partners "
+         "after a loyalty-program change", "18m ago", "Retail Partnerships",
+         580, "bps below plan"),
+        ("critical", "Shopper supply gap",
+         "Peak-hour shopper supply is 7% short of demand in 11 Sunday-evening "
+         "markets", "44m ago", "Marketplace Ops", 11, "markets short"),
+        ("warning", "Carrot Ads pacing",
+         "Three CPG brands are 12%+ under-delivering against committed "
+         "sponsored-product budgets", "2h ago", "Ads Sales", 3,
+         "brands under-pacing"),
+        ("warning", "Item replacement rate",
+         "Out-of-stock replacements accepted at 81% against an 86% target in "
+         "produce and dairy", "4h ago", "Product", 500, "bps below target"),
+        ("info", "Instacart+ adoption",
+         "Instacart+ share of delivery GTV reached a new high after the "
+         "retailer-co-branded membership promotion", "6h ago", "Growth",
+         120, "bps above plan"),
+    ],
+    "agent": ("You are an analyst covering Instacart's grocery marketplace: "
+              "gross transaction value, take rates, Instacart+ membership, "
+              "retailer-partner economics, Carrot Ads and enterprise platform "
+              "revenue."),
+}
+
+INSTACART["subs"] = {
+    "Delivery — Instacart+ members": [
+        ("Big-box & club retailers", .34, -15, 11.2, "Ahead"),
+        ("Regional grocers", .30, 10, 8.4, "On plan"),
+        ("Natural & specialty", .16, 25, 12.8, "Ahead"),
+        ("Convenience & pharmacy", .20, 40, 9.1, "On plan")],
+    "Delivery — non-members": [
+        ("Big-box & club retailers", .30, -20, 4.6, "On plan"),
+        ("Regional grocers", .34, 5, 5.9, "On plan"),
+        ("Natural & specialty", .14, 20, 7.2, "Ahead"),
+        ("Convenience & pharmacy", .22, 35, 2.4, "Behind")],
+    "Pickup": [
+        ("Big-box retailers", .52, -10, 1.8, "Behind"),
+        ("Regional grocers", .34, 15, 3.2, "On plan"),
+        ("Club & warehouse", .14, 30, 4.4, "On plan")],
+    "Enterprise Platform": [
+        ("Storefront Pro", .46, -10, 24.2, "Ahead"),
+        ("Caper Carts", .26, 30, 31.8, "Ahead"),
+        ("FoodStorm & other", .28, 15, 12.6, "On plan")],
+    "Carrot Ads": [
+        ("Sponsored products", .58, -15, 11.4, "Ahead"),
+        ("Shoppable video & display", .24, 20, 16.8, "Ahead"),
+        ("Brand pages & takeovers", .10, 35, 4.2, "On plan"),
+        ("Retailer-hosted Carrot Ads", .08, 50, 22.6, "Ahead")],
+    "Instacart Health & Other": [
+        ("FSA/HSA eligible baskets", .44, 0, 38.2, "Ahead"),
+        ("Instacart Business", .32, 25, 18.4, "Ahead"),
+        ("Gift cards & other", .24, 40, -2.6, "Behind")],
+}
+
+# Real operating footprint is US + Canada, weighted to the largest metros.
+# Shares sum to 1.00 so the card grid ($B) reconciles with the KPI band.
+FOOTPRINTS["instacart"] = [
+    ("CA", .140), ("TX", .090), ("FL", .070), ("NY", .065), ("IL", .045),
+    ("WA", .040), ("PA", .040), ("NJ", .035), ("GA", .035), ("VA", .030),
+    ("MA", .030), ("OH", .030), ("NC", .030), ("AZ", .028), ("CO", .025),
+    ("MI", .026), ("MD", .024), ("TN", .022), ("MN", .020), ("OR", .020),
+    ("CT", .020), ("MO", .018), ("IN", .018), ("WI", .016), ("SC", .016),
+    ("UT", .016), ("NV", .015), ("AL", .014), ("KY", .012), ("LA", .010)]
+
+LABELS["instacart"] = {
+    "personas": ["Executive", "Marketplace Operations"],
+    "modeler_page": "Marketplace Planning",
+    "cohort_page": "Customer Segments",
+    "modeler_title": "Basket & Promotion Scenario Modeler",
+    "shock_label": "Promotion intensity / basket shock (bps)",
+    "kpi_revenue": "Gross profit ($M)",
+    "kpi_margin": "Contribution ($M)",
+    "kpi_volume": "GTV & ad spend ($B)",
+    "kpi_units": "Peak-state monthly orderers (K)",
+    "driver_nim": "Gross margin, take rate less cost of revenue",
+    "driver_risk": "Order defect rate",
+    "driver_cost": "Cost of revenue rate",
+    "driver_eff": "Operating expense ratio",
+    "seg_product": "Business line",
+    "seg_credit": "Customer value tier",
+    "seg_dd": "Instacart+ member",
+    "seg_engage": "Order frequency",
+    "seg_held": "Retailers shopped",
+    "cohort_name": "Segment name",
+    "kpi_cohort_size": "Orderers in segment",
+    "kpi_cohort_vol": "Annual GTV ($)",
+    "kpi_cohort_rev": "GTV per orderer ($)",
+    "kpi_cohort_risk": "Avg churn risk",
+    "col_volume": "Baseline GTV",
+    "col_growth": "GTV growth %",
+    "col_yield": "Take rate Δ bps",
+    "col_cost": "Cost of revenue Δ bps",
+}
+
+SEGMENTS["instacart"] = {"Near Prime": "Occasional", "Prime": "Regular",
+                         "Super Prime": "Loyal", "Exceptional": "Power user",
+                         "Daily": "Weekly orderer", "Weekly": "Monthly orderer",
+                         "Monthly": "Quarterly orderer", "Dormant": "Lapsed"}
+
+VOCAB["instacart"] = {
+    "econ": ("Instacart earns a take rate on gross transaction value (GTV) "
+             "flowing through retailer partners (transaction fees, Instacart+ "
+             "membership, retailer fees) and sells advertising to CPG brands. "
+             "Cost of revenue covers payments, insurance and promotions, so the "
+             "spread is gross profit; Carrot Ads carries the highest margin."),
+    "metrics": ("gross profit, contribution, GTV and ad spend, and monthly "
+                "orderers"),
+    "bands": ("Customer value tiers: Occasional, Regular, Loyal, Power user. "
+              "Order frequency: Weekly orderer, Monthly orderer, Quarterly "
+              "orderer, Lapsed."),
+    "cohort_report": "segment size, annual GTV and average churn risk",
+}
+
+POP["instacart"] = {"bases": (320, 980, 2400, 5200), "rev_rate": 0.092,
+                    "fee_per_product": 40}
+
+# Bespoke hero: retailer-partner x delivery-hour fulfilment heatmap (plugin
+# source lives in plugins/instacart-fulfillment-heatmap). hero is None until it
+# is hosted + registered (POST /v2/plugins); needs push access to the public
+# repo's GitHub Pages, so it is NOT wired in yet.
+PLUGINS["instacart"] = {
+    "hero": None,
+    "hero_label": "RETAILER x HOUR FULFILMENT",
+    "ticker": None,
+    "hero_table": {"name": "Fulfilment Heatmap", "file": "fulfillment_heatmap.sql",
+                   "prefix": "h", "cols": ["Retailer", "Hour Block", "FillRatePct",
+                                           "OnTimePct", "Status"]},
+    "hero_config": {"retailer": "h0", "hourblock": "h1", "fillrate": "h2",
+                    "ontime": "h3", "status": "h4"},
+}
+
+COMPANIES["instacart"] = INSTACART
+
+
+def fulfillment_heatmap_sql(cfg):
+    """Retailer-partner x delivery-hour-block item fill rate and on-time rate,
+    for the bespoke hero plugin. Same explicit-UNION shape as daypart_ratings."""
+    blocks = ["Early AM", "Late AM", "Lunch", "Afternoon", "Evening", "Late"]
+    data = {
+        "Big-box retailers": [(94.1, 96.2, "Ahead"), (93.4, 95.1, "On plan"),
+                              (91.8, 93.4, "On plan"), (92.6, 94.8, "On plan"),
+                              (89.2, 90.1, "Behind"), (90.4, 92.6, "On plan")],
+        "Club & warehouse": [(95.6, 96.8, "Ahead"), (94.9, 96.0, "Ahead"),
+                             (93.1, 94.2, "On plan"), (93.8, 95.4, "Ahead"),
+                             (90.7, 91.8, "On plan"), (91.5, 93.0, "On plan")],
+        "Regional grocers": [(92.2, 94.6, "On plan"), (91.5, 93.8, "On plan"),
+                             (89.4, 91.2, "Behind"), (90.8, 92.4, "On plan"),
+                             (87.6, 88.9, "Behind"), (88.9, 91.0, "Behind")],
+        "Natural & specialty": [(93.0, 95.2, "Ahead"), (92.7, 94.8, "On plan"),
+                                (90.6, 92.1, "On plan"), (91.9, 93.7, "On plan"),
+                                (88.8, 90.3, "Behind"), (89.7, 91.6, "On plan")],
+        "Convenience & pharmacy": [(96.1, 97.4, "Ahead"), (95.8, 96.9, "Ahead"),
+                                   (94.7, 95.8, "Ahead"), (95.2, 96.4, "Ahead"),
+                                   (93.4, 94.6, "On plan"), (94.0, 95.5, "Ahead")],
+    }
+    rows = []
+    for ret, vals in data.items():
+        for blk, (fill, ontime, status) in zip(blocks, vals):
+            lead = "SELECT" if not rows else "UNION ALL SELECT"
+            if not rows:
+                rows.append("    %s '%s' AS \"Retailer\", '%s' AS \"Hour Block\","
+                            " %s AS \"FillRatePct\", %s AS \"OnTimePct\","
+                            " '%s' AS \"Status\"" % (lead, ret, blk, fill, ontime, status))
+            else:
+                rows.append("    %s '%s', '%s', %s, %s, '%s'"
+                            % (lead, ret, blk, fill, ontime, status))
+    return "SELECT * FROM (\n" + "\n".join(rows) + "\n) AS fulfillment_heatmap"
+
+
+STATEMENTS["instacart"] = {
+    "spec_name": "Instacart — Carrot Ads Campaign Statement (July 2026)",
+    "page_name": "Campaign Statement",
+    "manage_url": "ads.instacart.com",
+    "service_label": "Ads Support",
+    "service_phone": "1-888-246-7822",
+    "period": "07/01 – 07/31/2026",
+    "sect_rewards": "ORDER ATTRIBUTION SUMMARY",
+    "sect_summary": "ADVERTISER ACCOUNT SUMMARY",
+    "sect_category": "SPEND BY AD FORMAT",
+    "sect_activity": "CAMPAIGN BILLING ACTIVITY",
+    "sect_messages": "YOUR ADVERTISER MESSAGES",
+    "headline": [("Amount Due", None), ("Sponsored Product Spend", None),
+                 ("Campaign Renewal Date", "12/31/2026")],
+    "button_label": "Campaign statement ↗",
+    "rewards_total": "Total attributed orders",
+    "h_formulas": [("src", 'Sum([Statement Activity/Amount])', "MONEY"),
+                   ("src", 'SumIf([Statement Activity/Amount], '
+                    '[Statement Activity/Category] = "Sponsored Products")',
+                    "MONEY0")],
+    "msg_body": ("Beginning 09/01/2026, Shoppable Video and Display placements "
+                 "move to a new auction minimum under the updated Carrot Ads "
+                 "rate card. Sponsored Product bidding is unchanged. Brand "
+                 "pages created before 07/01 keep their current placement "
+                 "through the holiday period. No action is required."),
+    "warn1": ("**Attribution Notice:** Attributed orders use a 14-day "
+              "click / 7-day view window and are reported net of returns and "
+              "refunds. Figures may be restated for up to 30 days after the "
+              "statement period closes."),
+    "warn2": ("**Budget Pacing Notice:** Campaigns that deliver less than 85% "
+              "of committed budget by period end are eligible for a "
+              "reallocation credit, which does not carry past the next billing "
+              "cycle."),
+    "footer": ("Instacart Ads is a service of Maplebear Inc. Illustrative "
+               "campaign statement generated from a Sigma report "
+               "specification — synthetic data, not a real account."),
+}
+
+_IC_ACTIVITY = [
+    ("07/01", "07/02", "Sponsored Products — Snacks & Beverages (Always-on)",
+     "Sponsored Products", 486000.00, 38200),
+    ("07/03", "07/04", "Sponsored Products — Household & Cleaning",
+     "Sponsored Products", 312000.00, 24600),
+    ("07/07", "07/08", "Shoppable Video — Summer Grilling Launch",
+     "Shoppable Video", 224000.00, 11800),
+    ("07/10", "07/11", "Display — Back-to-School Pantry Takeover",
+     "Display & Takeovers", 178000.00, 6400),
+    ("07/12", "07/13", "Sponsored Products — Frozen & Dairy",
+     "Sponsored Products", 264000.00, 20900),
+    ("07/16", "07/17", "Brand Page — Better-for-You Snacks Hub",
+     "Brand Pages", 96000.00, 3200),
+    ("07/19", "07/20", "Carrot Ads — Retailer-Hosted Digital Circular",
+     "Carrot Ads", 142000.00, 8800),
+    ("07/22", "07/23", "Shoppable Video — New Item Trial Offer",
+     "Shoppable Video", 188000.00, 9700),
+    ("07/26", "07/27", "Sponsored Products — Pet & Baby Care",
+     "Sponsored Products", 208000.00, 16300),
+    ("07/29", "07/30", "Display — Weekend Entertaining Takeover",
+     "Display & Takeovers", 134000.00, 5100),
+]
+
+_IC_ORDERS = [
+    (1, "Attributed orders — Sponsored Products", 100000),
+    (2, "Attributed orders — Shoppable Video", 21500),
+    (3, "Attributed orders — Display & Takeovers", 11500),
+    (4, "Attributed orders — Brand Pages", 3200),
+    (5, "Attributed orders — Carrot Ads", 8800),
+    (6, "Reversed orders — returns and refunds", -4300),
+    # No trailing total row: the report sums every row (see Fox note).
+]
+
+_IC_SUMMARY = [
+    (1, "Advertiser", "Summit Valley Foods (CPG)"),
+    (2, "Campaign Agreement Status", "Active — Annual Upfront"),
+    (3, "Committed Annual Budget", "$14,000,000"),
+    (4, "Blended Return on Ad Spend (ROAS)", "5.8x"),
+    (5, "Budget Pacing", "96.4%"),
+    (6, "New-to-Brand Share of Orders", "31.2%"),
+    (7, "Campaign Renewal Date", "12/31/2026"),
     (8, "Account Standing", "Current"),
 ]

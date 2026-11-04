@@ -78,6 +78,11 @@ def download(query_id, out_path):
 
 def pages(kind, doc_id):
     path = "/v2/%s/%s/pages" % ("workbooks" if kind == "workbook" else "reports", doc_id)
+    if kind == "workbook":
+        # no CLI route for GET .../pages; the spec carries the page list
+        spec = S.get_workbook(doc_id)
+        return [(p["id"], p["name"]) for p in spec["document"]["pages"]
+                if p.get("visibility") != "hidden"]
     try:
         r = S.call("GET", path)
         return [(p.get("pageId") or p.get("id"), p.get("name")) for p in r.get("entries", [])]

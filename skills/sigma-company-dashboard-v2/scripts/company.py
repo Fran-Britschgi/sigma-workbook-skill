@@ -4133,11 +4133,10 @@ POP["instacart"] = {"bases": (320, 980, 2400, 5200), "rev_rate": 0.092,
                     "fee_per_product": 40}
 
 # Bespoke hero: retailer-partner x delivery-hour fulfilment heatmap (plugin
-# source lives in plugins/instacart-fulfillment-heatmap). hero is None until it
-# is hosted + registered (POST /v2/plugins); needs push access to the public
-# repo's GitHub Pages, so it is NOT wired in yet.
+# source lives in plugins/instacart-fulfillment-heatmap). hosted on GitHub Pages
+# (Fran-Britschgi/sigma-workbook-skill) and registered on papercranestaging.
 PLUGINS["instacart"] = {
-    "hero": None,
+    "hero": "4e7a5586-9b04-4b8d-9e47-da9f02c94e2a",
     "hero_label": "RETAILER x HOUR FULFILMENT",
     "ticker": None,
     "hero_table": {"name": "Fulfilment Heatmap", "file": "fulfillment_heatmap.sql",
